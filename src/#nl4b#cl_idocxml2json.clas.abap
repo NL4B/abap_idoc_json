@@ -32,6 +32,11 @@ public section.
       value(I_JSON_STRING) type STRING
     returning
       value(R_JSON_XSTRING) type XSTRING .
+  methods CONVERT_IDOC_TO_IDOC_XML
+    importing
+      value(I_DOCNUM) type EDI_DOCNUM
+    returning
+      value(R_IDOC_XML) type XSTRING .
   PROTECTED SECTION.
 private section.
 
@@ -60,10 +65,39 @@ ENDCLASS.
 CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
 
 
+  METHOD convert_idoc_to_idoc_xml.
+
+    DATA: idoc TYPE REF TO cl_idoc_xml1.
+
+    CREATE OBJECT idoc
+      EXPORTING
+        docnum             = i_docnum
+      EXCEPTIONS
+        error_loading_idoc = 1
+        error_building_xml = 2
+        OTHERS             = 3.
+
+    IF sy-subrc <> 0.
+*   raise exception.
+      RETURN.
+    ENDIF.
+
+    CALL METHOD idoc->get_xmldata_as_xstring
+      IMPORTING
+        data_string = r_idoc_xml.
+
+  ENDMETHOD.
+
+
   METHOD convert_idoc_xml_to_json.
 
     DATA tag_closing_stack_t TYPE STANDARD TABLE OF string WITH DEFAULT KEY.
     DATA segment_stack_t TYPE STANDARD TABLE OF string WITH DEFAULT KEY.
+
+    DATA(map_is_supplied) = abap_false.
+    IF i_map_names_tab IS SUPPLIED.
+      map_is_supplied = abap_true.
+    ENDIF.
 
     DATA(edidc40_r) = get_idoc_control_from_idocxml( EXPORTING i_idoc_xml = i_idoc_xml ).
     DATA(segment_t) = get_segments_from_idoc_control( EXPORTING i_edidc40 = edidc40_r ).
@@ -79,16 +113,74 @@ CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
     ENDIF.
 
     LOOP AT xmltable_t ASSIGNING FIELD-SYMBOL(<xmltable_r>).
+      DATA(hier) = <xmltable_r>-hier - 2.
       AT FIRST.
-
+        DATA(is_first_segm_field) = abap_true.
+        DATA(is_first) = abap_true.
+        IF <xmltable_r>-type EQ space AND hier EQ 1.
+          DATA(level_up)   = hier + 1.
+          DATA(level_down) = hier - 1.
+          DATA(level_segment) = hier.
+        ELSE.
+*        raise exception, not a starting segment
+          EXIT.
+        ENDIF.
       ENDAT.
 
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*     Get xml tag name
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      DATA(tag_name) = <xmltable_r>-cname.
+
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*     Process a xml segment
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      IF <xmltable_r>-type EQ space.
+        IF tag_name EQ 'EDI_DC40'.
+          if i_include_control_record EQ space.
+            DATA(ignore_current_segment) = abap_true.
+            continue.
+          endif.
+          data(is_json_array) = abap_false.
+        ENDIF.
+
+      ELSE.
+        read table segment_t into data(segment_r) with key segmenttyp = tag_name.
+        if sy-subrc eq 0.
+          if conv i( segment_r-occmax ) > 1.
+            is_json_array = abap_true.
+          else.
+            is_json_array = abap_false.
+          endif.
+
+        else.
+*         raise exception
+          return.
+        endif.
+
+      ENDIF.
+
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*     Process a xml attribute
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*     Process a xml value
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+
     ENDLOOP.
-    if sy-subrc eq 0.
-      loop at tag_closing_stack_t assigning field-symbol(<tag>).
+    IF sy-subrc EQ 0.
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*     Adding closing tages
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      LOOP AT tag_closing_stack_t ASSIGNING FIELD-SYMBOL(<tag>).
         json_string = |{ json_string }{ <tag> }|.
-      endloop.
-    endif.
+      ENDLOOP.
+    ENDIF.
 
 
   ENDMETHOD.
