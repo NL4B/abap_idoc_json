@@ -1,4 +1,36 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <abapGit version="v1.0.0" serializer="LCL_OBJECT_CLAS" serializer_version="v1.0.0">
- <asx:abap version="1.0" xmlns:asx="http://www.sap.com/abapxml"/>
+ <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+  <asx:values>
+   <VSEOCLASS>
+    <CLSNAME>/NL4B/CL_IDOCXML2JSON</CLSNAME>
+    <LANGU>E</LANGU>
+    <DESCRIPT>Class for handling IDOC xml to JSON</DESCRIPT>
+    <STATE>1</STATE>
+    <CLSCCINCL>X</CLSCCINCL>
+    <FIXPT>X</FIXPT>
+    <UNICODE>X</UNICODE>
+   </VSEOCLASS>
+   <DESCRIPTIONS>
+    <SEOCOMPOTX>
+     <CLSNAME>/NL4B/CL_IDOCXML2JSON</CLSNAME>
+     <CMPNAME>EDIDC40_R</CMPNAME>
+     <LANGU>E</LANGU>
+     <DESCRIPT>IDOC Control Record</DESCRIPT>
+    </SEOCOMPOTX>
+    <SEOCOMPOTX>
+     <CLSNAME>/NL4B/CL_IDOCXML2JSON</CLSNAME>
+     <CMPNAME>TT_SEGMENT</CMPNAME>
+     <LANGU>E</LANGU>
+     <DESCRIPT>Description of IDoc Segments for Conversion to XML</DESCRIPT>
+    </SEOCOMPOTX>
+    <SEOCOMPOTX>
+     <CLSNAME>/NL4B/CL_IDOCXML2JSON</CLSNAME>
+     <CMPNAME>XMLTABLE_T</CMPNAME>
+     <LANGU>E</LANGU>
+     <DESCRIPT>XML table</DESCRIPT>
+    </SEOCOMPOTX>
+   </DESCRIPTIONS>
+  </asx:values>
+ </asx:abap>
 </abapGit>
