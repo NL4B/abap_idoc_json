@@ -1,68 +1,78 @@
-class /NL4B/CL_IDOCXML2JSON definition
-  public
-  final
-  create public .
+CLASS /nl4b/cl_idocxml2json DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
 
-public section.
+  PUBLIC SECTION.
 
-  interfaces IF_HTTP_EXTENSION .
+    INTERFACES if_http_extension .
 
-  types TT_SEGMENT type DCXMLIDSEG .
-  types:
-    tt_xmltable TYPE STANDARD TABLE OF smum_xmltb WITH DEFAULT KEY .
-  types TS_XMLTABLE type SMUM_XMLTB .
-  types:
-    BEGIN OF ts_map_idoc_names,
-             xmlsegment TYPE char30,
-             xmlfield   TYPE char30,
-             jsonname   TYPE text30.
+    TYPES tt_segment TYPE dcxmlidseg .
+    TYPES:
+      tt_xmltable TYPE STANDARD TABLE OF smum_xmltb WITH DEFAULT KEY .
+    TYPES ts_xmltable TYPE smum_xmltb .
+    TYPES:
+      BEGIN OF ts_map_idoc_names,
+        xmlsegment TYPE char30,
+        xmlfield   TYPE char30,
+        jsonname   TYPE text30.
     TYPES: END OF ts_map_idoc_names .
-  types:
-    tt_map_idoc_names TYPE STANDARD TABLE OF ts_map_idoc_names WITH DEFAULT KEY .
+    TYPES:
+      tt_map_idoc_names TYPE STANDARD TABLE OF ts_map_idoc_names WITH DEFAULT KEY .
 
-  methods CONVERT_IDOC_XML_TO_JSON
-    importing
-      value(I_IDOC_XML) type XSTRING
-      value(I_INCLUDE_CONTROL_RECORD) type XFELD default SPACE
-      value(I_MAP_NAMES_TAB) type STRING optional
-    returning
-      value(R_JSON) type XSTRING .
-  methods CONVERT_JSON_STRING_TO_XSTRING
-    importing
-      value(I_JSON_STRING) type STRING
-    returning
-      value(R_JSON_XSTRING) type XSTRING .
-  methods CONVERT_IDOC_TO_IDOC_XML
-    importing
-      value(I_DOCNUM) type EDI_DOCNUM
-    returning
-      value(R_IDOC_XML) type XSTRING .
+    METHODS convert_idoc_xml_to_json
+      IMPORTING
+        VALUE(i_idoc_xml)               TYPE xstring
+        VALUE(i_include_control_record) TYPE xfeld DEFAULT space
+        VALUE(i_map_names_tab)          TYPE string OPTIONAL
+      RETURNING
+        VALUE(r_json)                   TYPE xstring .
+    METHODS convert_json_string_to_xstring
+      IMPORTING
+        VALUE(i_json_string)  TYPE string
+      RETURNING
+        VALUE(r_json_xstring) TYPE xstring .
+    METHODS convert_idoc_to_idoc_xml
+      IMPORTING
+        VALUE(i_docnum)   TYPE edi_docnum
+      RETURNING
+        VALUE(r_idoc_xml) TYPE xstring .
   PROTECTED SECTION.
-private section.
+  PRIVATE SECTION.
 
-  data XMLTABLE_T type TT_XMLTABLE .
-  data EDIDC40_R type EDI_DC40 .
+    DATA xmltable_t TYPE tt_xmltable .
+    DATA edidc40_r TYPE edi_dc40 .
 
-  methods GET_IDOC_CONTROL_FROM_IDOCXML
-    importing
-      value(I_IDOC_XML) type XSTRING
-    returning
-      value(R_EDIDC40) type EDI_DC40 .
-  methods GET_SEGMENTS_FROM_IDOC_CONTROL
-    importing
-      !I_EDIDC40 type EDI_DC40
-    returning
-      value(R_SEGMENT_T) type TT_SEGMENT .
-  methods GET_XMLTABLE_FROM_IDOCXML
-    importing
-      value(I_IDOC_XML) type XSTRING
-    returning
-      value(R_XMLTABLE) type TT_XMLTABLE .
+    METHODS get_idoc_control_from_idocxml
+      IMPORTING
+        VALUE(i_idoc_xml) TYPE xstring
+      RETURNING
+        VALUE(r_edidc40)  TYPE edi_dc40 .
+    METHODS get_segments_from_idoc_control
+      IMPORTING
+        !i_edidc40         TYPE edi_dc40
+      RETURNING
+        VALUE(r_segment_t) TYPE tt_segment .
+    METHODS get_xmltable_from_idocxml
+      IMPORTING
+        VALUE(i_idoc_xml) TYPE xstring
+      RETURNING
+        VALUE(r_xmltable) TYPE tt_xmltable .
+    CLASS-METHODS xml_processing_get_element
+      IMPORTING
+        VALUE(i_node) TYPE REF TO if_ixml_node
+      CHANGING
+        !c_xmltable   TYPE tt_xmltable .
+    CLASS-METHODS xml_processing_parsing
+      IMPORTING
+        !i_xml            TYPE xstring
+      RETURNING
+        VALUE(r_xmltable) TYPE tt_xmltable .
 ENDCLASS.
 
 
 
-CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
+CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
 
 
   METHOD convert_idoc_to_idoc_xml.
@@ -102,8 +112,17 @@ CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
     DATA(edidc40_r) = get_idoc_control_from_idocxml( EXPORTING i_idoc_xml = i_idoc_xml ).
     DATA(segment_t) = get_segments_from_idoc_control( EXPORTING i_edidc40 = edidc40_r ).
     DATA(xmltable_t) = get_xmltable_from_idocxml( EXPORTING i_idoc_xml = i_idoc_xml ).
-
+    DATA(previous_type) = space.
+    DATA(tag_level) = -1.
+    data previous_tag type string.
+    DATA tag_name type string.
     DELETE xmltable_t WHERE hier < 3.
+
+    loop at segment_t ASSIGning field-symbol(<seg>).
+        loop at xmltable_t assigning field-symbol(<line>) where cname eq <seg>-segmenttyp and type eq 'V'.
+            <line>-type = space.
+        endloop.
+    endloop.
 
     DATA(json_string) = |\{|.
     INSERT |\}| INTO tag_closing_stack_t INDEX 1.
@@ -121,6 +140,7 @@ CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
           DATA(level_up)   = hier + 1.
           DATA(level_down) = hier - 1.
           DATA(level_segment) = hier.
+          DATA(current_segment) = <xmltable_r>-cname.
         ELSE.
 *        raise exception, not a starting segment
           EXIT.
@@ -130,48 +150,185 @@ CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 *     Get xml tag name
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      DATA(tag_name) = <xmltable_r>-cname.
+      tag_name = <xmltable_r>-cname.
+
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*     Process a xml attribute
+*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      IF <xmltable_r>-type EQ 'A' and previous_type eq space.
+        previous_type = <xmltable_r>-type.
+        CONTINUE.
+      ENDIF.
+
+      IF <xmltable_r>-type EQ 'A' and previous_type eq 'V'.
+        current_segment = previous_tag.
+
+        json_string = substring( val = json_string off = 0 len = strlen( json_string ) - 1 ).
+
+
+          READ TABLE segment_t INTO DATA(segment_r) WITH KEY segmenttyp = previous_tag.
+          IF sy-subrc EQ 0.
+            IF CONV i( segment_r-occmax ) > 1.
+               json_string = |{ json_string }[]|.
+            ELSE.
+               json_string = |{ json_string }\{\}|.
+            ENDIF.
+        endif.
+        previous_type = <xmltable_r>-type.
+        CONTINUE.
+      ENDIF.
 
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 *     Process a xml segment
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       IF <xmltable_r>-type EQ space.
         IF tag_name EQ 'EDI_DC40'.
-          if i_include_control_record EQ space.
-            DATA(ignore_current_segment) = abap_true.
-            continue.
-          endif.
-          data(is_json_array) = abap_false.
+          IF i_include_control_record EQ space.
+          previous_type = <xmltable_r>-type.
+            data(ignore_current_segment) = abap_true.
+            CONTINUE.
+          ENDIF.
+          DATA(is_json_array) = abap_false.
+
+
+        ELSEIF tag_name EQ 'EDI_DS40'.
+            ignore_current_segment = abap_true.
+            previous_type = <xmltable_r>-type.
+            current_segment = tag_name .
+            CONTINUE.
+        ELSE.
+          READ TABLE segment_t INTO segment_r WITH KEY segmenttyp = tag_name.
+          IF sy-subrc EQ 0.
+            IF CONV i( segment_r-occmax ) > 1.
+              is_json_array = abap_true.
+            ELSE.
+              is_json_array = abap_false.
+            ENDIF.
+          ELSE.
+*         raise exception
+            RETURN.
+          ENDIF.
+
         ENDIF.
 
-      ELSE.
-        read table segment_t into data(segment_r) with key segmenttyp = tag_name.
-        if sy-subrc eq 0.
-          if conv i( segment_r-occmax ) > 1.
-            is_json_array = abap_true.
-          else.
-            is_json_array = abap_false.
-          endif.
+        IF  map_is_supplied EQ abap_true.
 
-        else.
-*         raise exception
-          return.
-        endif.
 
+        ELSE.
+
+
+
+        ENDIF.
+
+
+        IF ignore_current_segment EQ abap_true.
+          CONTINUE.
+        ENDIF.
+
+
+        IF is_first_segm_field EQ abap_true AND is_first EQ abap_true.
+          INSERT current_segment INTO segment_stack_t INDEX 1.
+          IF  is_json_array EQ abap_true.
+            json_string = |{ json_string } "{ tag_name }":[\{|.
+            INSERT |\}]| INTO tag_closing_stack_t INDEX 1.
+          ELSE.
+            json_string = |{ json_string } "{ tag_name }":\{|.
+            INSERT |\}| INTO tag_closing_stack_t INDEX 1.
+          ENDIF.
+          current_segment = tag_name.
+          is_first = abap_false.
+          CONTINUE.
+        ENDIF.
+
+        IF current_segment EQ tag_name AND level_segment = hier.
+          json_string = |{ json_string }\},\{|.
+        ENDIF.
+
+        IF current_segment NE tag_name AND level_segment = hier.
+          READ TABLE tag_closing_stack_t INTO DATA(tag) INDEX 1.
+          IF sy-subrc EQ 0.
+            json_string = |{ json_string }{ tag } |.
+            DELETE tag_closing_stack_t INDEX 1.
+          ENDIF.
+          DELETE segment_stack_t INDEX 1.
+          current_segment = tag_name.
+          INSERT current_segment INTO segment_stack_t INDEX 1.
+          IF  is_json_array EQ abap_true.
+            json_string = |{ json_string }, "{ tag_name }":[\{|.
+            INSERT |\}]| INTO tag_closing_stack_t INDEX 1.
+          ELSE.
+            json_string = |{ json_string }, "{ tag_name }":\{|.
+            INSERT |\}| INTO tag_closing_stack_t INDEX 1.
+          ENDIF.
+        ENDIF.
+
+        IF current_segment NE tag_name AND level_up = hier.
+          level_segment = hier.
+          current_segment = tag_name.
+          INSERT current_segment INTO segment_stack_t INDEX 1.
+          IF  is_json_array EQ abap_true.
+            json_string = |{ json_string }, "{ tag_name }":[\{|.
+            INSERT |\}]| INTO tag_closing_stack_t INDEX 1.
+          ELSE.
+            json_string = |{ json_string }, "{ tag_name }":\{|.
+            INSERT |\}| INTO tag_closing_stack_t INDEX 1.
+          ENDIF.
+        ENDIF.
+
+        IF current_segment NE tag_name AND hier < level_segment.
+          DATA(steps_back) = level_segment - hier.
+          DO steps_back TIMES.
+            READ TABLE tag_closing_stack_t INTO tag INDEX 1.
+            IF sy-subrc EQ 0.
+              json_string = |{ json_string }{ tag }|.
+              DELETE tag_closing_stack_t INDEX 1.
+            ENDIF.
+            DELETE segment_stack_t INDEX 1.
+          ENDDO.
+          level_segment = hier.
+          current_segment = tag_name.
+          INSERT current_segment INTO segment_stack_t INDEX 1.
+          IF  is_json_array EQ abap_true.
+            json_string = |{ json_string }, "{ tag_name }":[\{|.
+            INSERT |\}]| INTO tag_closing_stack_t INDEX 1.
+          ELSE.
+            json_string = |{ json_string }, "{ tag_name }":\{|.
+            INSERT |\}| INTO tag_closing_stack_t INDEX 1.
+          ENDIF.
+          is_first_segm_field = abap_true.
+        ENDIF.
       ENDIF.
-
-*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*     Process a xml attribute
-*     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 *     Process a xml value
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+      IF <xmltable_r>-type EQ 'V'.
+
+        previous_type = <xmltable_r>-type.
+        IF ignore_current_segment EQ abap_true.
+          CONTINUE.
+        ENDIF.
+        IF i_include_control_record EQ space AND current_segment EQ |EDI_DC40|.
+          CONTINUE.
+        ENDIF.
+        IF  map_is_supplied EQ abap_true.
 
 
 
+
+
+        ENDIF.
+
+        IF previous_type EQ 'V' AND tag_level EQ hier AND is_first_segm_field EQ abap_false.
+*         IF previous_type EQ 'V' AND is_first_segm_field EQ abap_false.
+          json_string = |{ json_string }, |.
+        ENDIF.
+        json_string = |{ json_string }"{ tag_name }":"{ <xmltable_r>-cvalue }" |.
+        is_first_segm_field = abap_false.
+      ENDIF.
+      tag_level = hier.
+      previous_tag = tag_name.
     ENDLOOP.
     IF sy-subrc EQ 0.
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -207,6 +364,94 @@ CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
 
 
   METHOD get_idoc_control_from_idocxml.
+
+
+*    DATA(ixml) = cl_ixml=>create( ).
+*    DATA(stream_factory) = ixml->create_stream_factory( ).
+*    DATA(istream) = stream_factory->create_istream_xstring( i_idoc_xml ).
+*    DATA(document) = ixml->create_document( ).
+*    DATA(parser) = ixml->create_parser(
+*                             document = document
+*                             stream_factory = stream_factory
+*                             istream = istream
+*                          ).
+*    IF parser->parse( ) NE 0.
+*      IF parser->num_errors( ) NE 0.
+*
+*
+*
+*
+*
+*
+*
+*
+*      ENDIF.
+*      EXIT.
+*    ENDIF.
+*    CALL METHOD istream->close( ).
+*    CLEAR istream.
+*
+*    DATA(iterator) = document->create_iterator( ).
+*    DATA node TYPE REF TO if_ixml_node.
+*
+*    node = iterator->get_next( ).
+*
+*    DATA(node_type)  = node->get_type( ).
+*    DATA(node_name)  = node->get_name( ).
+*    DATA(node_value) = node->get_value( ).
+*    DATA(is_root) = node->is_root(  ).
+*
+*    IF ( node->get_name( ) = '#document' AND node->get_type( ) = 1 AND node->is_root( ) EQ abap_true ).
+*      DATA(node_list) = node->get_children( ).
+*      IF node_list->get_length( ) EQ 1.
+*        DATA(idoc_node) = node_list->get_item( index = 0 ).
+*        DATA(idoc_node_type)  = idoc_node->get_type( ). "4
+*        DATA(idoc_node_name)  = idoc_node->get_name( ). "BANK_SAVEREPLICA01
+*        DATA(idoc_node_list)  = idoc_node->get_children( ).
+*        DATA(list_lenght) = idoc_node_list->get_length( ). "1
+*        IF idoc_node_list->get_length( ) = 1 .
+*          DATA(idoc) = idoc_node_list->get_item( index = 0 ).
+*          DATA(idoc_type)  = idoc->get_type( ).  "4
+*          DATA(idoc_name)  = idoc->get_name( ).  "IDOC
+*          DATA(idoc_node_records)  = idoc->get_children( ).
+*          IF idoc_node_records->get_length( ) > 0 .
+*            DATA(edi_dc40_node) = idoc_node_records->get_item( index = 0 ).
+*            DATA(edi_dc40_node_type)  = edi_dc40_node->get_type( ).  "4
+*            DATA(edi_dc40_node_name)  = edi_dc40_node->get_name( ).  "EDI_DC40
+*
+*          ELSE.
+*
+**         Document has multiple documents, only one document supported
+*          ENDIF.
+*
+*
+*        ELSE.
+**         Document has multiple documents, only one document supported
+*          RETURN.
+*        ENDIF.
+*
+*      ENDIF.
+*
+*
+*
+*    ENDIF.
+*
+*    iterator = edi_dc40_node->CREATE_ITERATOR( ).
+*    DO.
+*      node = iterator->get_next( ).
+*      IF node IS INITIAL.
+*        EXIT.
+*      ENDIF.
+*      node_type  = node->get_type( ).
+*    node_name  = node->get_name( ).
+*    node_value = node->get_value( ).
+*
+*      IF node->get_type( ) = if_ixml_node=>co_node_text.
+*        node->set_value( to_upper( node->get_value( ) ) ).
+*      ENDIF.
+*    ENDDO.
+
+
 
     IF me->edidc40_r IS INITIAL.
 
@@ -251,25 +496,47 @@ CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
   ENDMETHOD.
 
 
-  method GET_SEGMENTS_FROM_IDOC_CONTROL.
-  endmethod.
+  METHOD get_segments_from_idoc_control.
+
+    CALL FUNCTION 'IDOCTYPE_READ_COMPLETE'
+      EXPORTING
+        pi_idoctyp         = i_edidc40-idoctyp
+        pi_cimtyp          = i_edidc40-cimtyp
+*       PI_RELEASE         = SY-SAPRL
+*       PI_APPLREL         =
+*       PI_VERSION         = '3'
+*       PI_READ_UNREL      =
+*      IMPORTING
+*        pe_header          =
+      TABLES
+        pt_segments        = r_segment_t
+*       PT_FIELDS          =
+*       PT_FVALUES         =
+*       PT_MESSAGES        =
+      EXCEPTIONS
+        object_unknown     = 1
+        segment_unknown    = 2
+        relation_not_found = 3
+        OTHERS             = 4.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+
+
+
+  ENDMETHOD.
 
 
   METHOD get_xmltable_from_idocxml.
     DATA: bapiret2_t TYPE bapiret2_t.
 
-    IF me->xmltable_t IS INITIAL.
+    IF me->xmltable_t IS NOT INITIAL.
       r_xmltable =  me->xmltable_t.
       RETURN.
     ELSE.
       CLEAR r_xmltable.
-      CALL FUNCTION 'SMUM_XML_PARSE'
-        EXPORTING
-          xml_input = i_idoc_xml
-        TABLES
-          xml_table = me->xmltable_t
-          return    = bapiret2_t.
-
+      me->xmltable_t = xml_processing_parsing( i_xml = i_idoc_xml ).
       IF lines( xmltable_t ) = 0.
         CLEAR me->xmltable_t.
 *     Raise Exception no XML file
@@ -282,7 +549,120 @@ CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
 
 
   METHOD if_http_extension~handle_request.
-  data(request) = server->request.
-  data(payload) = request->get_data( ).
+    DATA(request) = server->request.
+    DATA(payload) = request->get_data( ).
+  ENDMETHOD.
+
+
+  METHOD xml_processing_get_element.
+    CONSTANTS strmaxlen TYPE i VALUE 255.
+    DATA: text_node       TYPE REF TO if_ixml_text.
+    DATA: index       TYPE i.
+    DATA(level) = i_node->get_height( ).
+    DATA xmltable_r TYPE ts_xmltable.
+
+*   DATA(node_type)  = i_node->get_type( ).
+*    DATA(node_name)  = i_node->get_name( ).
+*    DATA(node_value) = i_node->get_value( ).
+*DATA(node_depth) = i_node->GET_DEPTH( ).
+
+    CASE i_node->get_type( ).
+      WHEN if_ixml_node=>co_node_element.
+        DATA(string) = i_node->get_name( ).
+        CLEAR xmltable_r.
+        xmltable_r-hier = level.
+        xmltable_r-cname = string.
+        IF i_node->get_value( ) EQ space AND i_node->get_depth( ) EQ 0.
+          xmltable_r-cvalue = space.
+          xmltable_r-type = 'V'.
+        ENDIF.
+        APPEND xmltable_r TO  c_xmltable.
+        DATA(attributes) = i_node->get_attributes( ).
+        IF NOT attributes IS INITIAL.
+          DATA(attr_len) = attributes->get_length( ).
+          WHILE index < attr_len.
+            DATA(child) = attributes->get_item( index ).
+            CLEAR xmltable_r.
+            xmltable_r-hier = level.
+            xmltable_r-type = 'A'.
+            xmltable_r-cname = child->get_name( ).
+            xmltable_r-cvalue = child->get_value( ).
+            APPEND xmltable_r TO c_xmltable.
+            index = index + 1.
+          ENDWHILE.
+        ENDIF.
+      WHEN if_ixml_node=>co_node_text OR if_ixml_node=>co_node_cdata_section.
+
+        IF i_node->get_type( ) EQ if_ixml_node=>co_node_text.
+          text_node ?= i_node->query_interface( ixml_iid_text ).
+        ELSE.
+          text_node ?= i_node->query_interface( ixml_iid_cdata_section ).
+        ENDIF.
+
+        IF text_node->ws_only( ) IS INITIAL.
+          string = i_node->get_value( ).
+*
+          DESCRIBE TABLE c_xmltable LINES index.
+          READ TABLE c_xmltable INTO xmltable_r INDEX index.
+          WHILE NOT xmltable_r-type IS INITIAL.
+            index = index - 1.
+            READ TABLE c_xmltable INTO xmltable_r INDEX index.
+          ENDWHILE.
+          DATA(len) = strlen( string ).
+          IF len < strmaxlen.
+            xmltable_r-cvalue = string.
+            xmltable_r-type = 'V'.
+          ELSE.
+            xmltable_r-cvalue = string(strmaxlen).
+            xmltable_r-type = '+'.
+          ENDIF.
+          MODIFY c_xmltable FROM xmltable_r INDEX index.
+          len = strlen( string ) - strmaxlen.
+          WHILE len > 0.
+            string = string+strmaxlen.
+            IF len < strmaxlen.
+              xmltable_r-cvalue = string.
+              xmltable_r-type = 'V'.
+            ELSE.
+              xmltable_r-cvalue = string(strmaxlen).
+              xmltable_r-type = '+'.
+            ENDIF.
+            index = index + 1.
+            INSERT xmltable_r INTO c_xmltable INDEX index.
+            len = len - strmaxlen.
+          ENDWHILE.
+        ENDIF.
+    ENDCASE.
+
+    i_node = i_node->get_first_child( ).
+    WHILE NOT i_node IS INITIAL.
+      xml_processing_get_element( EXPORTING i_node = i_node CHANGING c_xmltable = c_xmltable ).
+      i_node = i_node->get_next( ).
+    ENDWHILE.
+
+
+  ENDMETHOD.
+
+
+  METHOD xml_processing_parsing.
+    DATA(ixml) = cl_ixml=>create( ).
+    DATA(stream_factory) = ixml->create_stream_factory( ).
+    DATA(istream) = stream_factory->create_istream_xstring( i_xml ).
+    DATA(document) = ixml->create_document( ).
+    DATA(parser) = ixml->create_parser( stream_factory = stream_factory
+                                    istream        = istream
+                                    document       = document ).
+    IF parser->parse( ) NE 0.
+      IF parser->num_errors( ) NE 0.
+*      Raise error
+      ENDIF.
+      EXIT.
+    ENDIF.
+
+    CALL METHOD istream->close( ).
+    CLEAR istream.
+
+    xml_processing_get_element( EXPORTING i_node = document CHANGING c_xmltable = r_xmltable ).
+
   ENDMETHOD.
 ENDCLASS.
