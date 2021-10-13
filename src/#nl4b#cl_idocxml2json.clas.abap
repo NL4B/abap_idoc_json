@@ -1,42 +1,44 @@
-CLASS /nl4b/cl_idocxml2json DEFINITION
-  PUBLIC
-  FINAL
-  CREATE PUBLIC .
+class /NL4B/CL_IDOCXML2JSON definition
+  public
+  final
+  create public .
 
-  PUBLIC SECTION.
+public section.
 
-    INTERFACES if_http_extension .
+  interfaces IF_HTTP_EXTENSION .
 
-    TYPES tt_segment TYPE dcxmlidseg .
-    TYPES:
-      tt_xmltable TYPE STANDARD TABLE OF smum_xmltb WITH DEFAULT KEY .
-    TYPES ts_xmltable TYPE smum_xmltb .
-    TYPES:
-      BEGIN OF ts_map_idoc_names,
+  types TT_SEGMENT type DCXMLIDSEG .
+  types:
+    tt_xmltable TYPE STANDARD TABLE OF smum_xmltb WITH DEFAULT KEY .
+  types TS_XMLTABLE type SMUM_XMLTB .
+  types:
+    BEGIN OF ts_map_idoc_names,
         xmlsegment TYPE char30,
         xmlfield   TYPE char30,
         jsonname   TYPE text30.
     TYPES: END OF ts_map_idoc_names .
-    TYPES:
-      tt_map_idoc_names TYPE STANDARD TABLE OF ts_map_idoc_names WITH DEFAULT KEY .
+  types:
+    tt_map_idoc_names TYPE STANDARD TABLE OF ts_map_idoc_names WITH DEFAULT KEY .
 
-    METHODS convert_idoc_xml_to_json
-      IMPORTING
-        VALUE(i_idoc_xml)               TYPE xstring
-        VALUE(i_include_control_record) TYPE xfeld DEFAULT space
-        VALUE(i_map_names_tab)          TYPE string OPTIONAL
-      RETURNING
-        VALUE(r_json)                   TYPE xstring .
-    METHODS convert_json_string_to_xstring
-      IMPORTING
-        VALUE(i_json_string)  TYPE string
-      RETURNING
-        VALUE(r_json_xstring) TYPE xstring .
-    METHODS convert_idoc_to_idoc_xml
-      IMPORTING
-        VALUE(i_docnum)   TYPE edi_docnum
-      RETURNING
-        VALUE(r_idoc_xml) TYPE xstring .
+  methods CONVERT_IDOC_XML_TO_JSON
+    importing
+      value(I_IDOC_XML) type XSTRING
+      value(I_INCLUDE_CONTROL_RECORD) type XFELD default SPACE
+      value(I_MAP_NAMES_TAB) type STRING optional
+    returning
+      value(R_JSON) type XSTRING
+    raising
+      /NL4B/CX_IDOCXML2JSON .
+  methods CONVERT_JSON_STRING_TO_XSTRING
+    importing
+      value(I_JSON_STRING) type STRING
+    returning
+      value(R_JSON_XSTRING) type XSTRING .
+  methods CONVERT_IDOC_TO_IDOC_XML
+    importing
+      value(I_DOCNUM) type EDI_DOCNUM
+    returning
+      value(R_IDOC_XML) type XSTRING .
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -72,7 +74,7 @@ ENDCLASS.
 
 
 
-CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
+CLASS /NL4B/CL_IDOCXML2JSON IMPLEMENTATION.
 
 
   METHOD convert_idoc_to_idoc_xml.
@@ -101,8 +103,8 @@ CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
 
   METHOD convert_idoc_xml_to_json.
 
-    DATA tag_closing_stack_t TYPE STANDARD TABLE OF string WITH DEFAULT KEY.
-    DATA segment_stack_t TYPE STANDARD TABLE OF string WITH DEFAULT KEY.
+    DATA tag_closing_stack_t TYPE STANDARD TABLE OF string.
+    DATA segment_stack_t TYPE STANDARD TABLE OF string.
 
     DATA(map_is_supplied) = abap_false.
     IF i_map_names_tab IS SUPPLIED.
@@ -114,15 +116,16 @@ CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
     DATA(xmltable_t) = get_xmltable_from_idocxml( EXPORTING i_idoc_xml = i_idoc_xml ).
     DATA(previous_type) = space.
     DATA(tag_level) = -1.
-    data previous_tag type string.
-    DATA tag_name type string.
-    DELETE xmltable_t WHERE hier < 3.
+    DATA previous_tag TYPE string.
+    DATA tag_name TYPE string.
 
-    loop at segment_t ASSIGning field-symbol(<seg>).
-        loop at xmltable_t assigning field-symbol(<line>) where cname eq <seg>-segmenttyp and type eq 'V'.
-            <line>-type = space.
-        endloop.
-    endloop.
+    LOOP AT segment_t ASSIGNING FIELD-SYMBOL(<seg>).
+      LOOP AT xmltable_t ASSIGNING FIELD-SYMBOL(<line>) WHERE cname EQ <seg>-segmenttyp AND type EQ 'V'.
+        <line>-type = space.
+      ENDLOOP.
+    ENDLOOP.
+
+    DELETE xmltable_t WHERE hier < 3.
 
     DATA(json_string) = |\{|.
     INSERT |\}| INTO tag_closing_stack_t INDEX 1.
@@ -155,28 +158,28 @@ CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 *     Process a xml attribute
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      IF <xmltable_r>-type EQ 'A' and previous_type eq space.
+      IF <xmltable_r>-type EQ 'A' AND previous_type EQ space.
         previous_type = <xmltable_r>-type.
         CONTINUE.
       ENDIF.
 
-      IF <xmltable_r>-type EQ 'A' and previous_type eq 'V'.
-        current_segment = previous_tag.
-
-        json_string = substring( val = json_string off = 0 len = strlen( json_string ) - 1 ).
-
-
-          READ TABLE segment_t INTO DATA(segment_r) WITH KEY segmenttyp = previous_tag.
-          IF sy-subrc EQ 0.
-            IF CONV i( segment_r-occmax ) > 1.
-               json_string = |{ json_string }[]|.
-            ELSE.
-               json_string = |{ json_string }\{\}|.
-            ENDIF.
-        endif.
-        previous_type = <xmltable_r>-type.
-        CONTINUE.
-      ENDIF.
+*      IF <xmltable_r>-type EQ 'A' AND previous_type EQ 'V'.
+*        current_segment = previous_tag.
+*
+*        json_string = substring( val = json_string off = 0 len = strlen( json_string ) - 1 ).
+*
+*
+*        READ TABLE segment_t INTO DATA(segment_r) WITH KEY segmenttyp = previous_tag.
+*        IF sy-subrc EQ 0.
+*          IF CONV i( segment_r-occmax ) > 1.
+*            json_string = |{ json_string }[]|.
+*          ELSE.
+*            json_string = |{ json_string }\{\}|.
+*          ENDIF.
+*        ENDIF.
+*        previous_type = <xmltable_r>-type.
+*        CONTINUE.
+*      ENDIF.
 
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 *     Process a xml segment
@@ -184,20 +187,20 @@ CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
       IF <xmltable_r>-type EQ space.
         IF tag_name EQ 'EDI_DC40'.
           IF i_include_control_record EQ space.
-          previous_type = <xmltable_r>-type.
-            data(ignore_current_segment) = abap_true.
+            previous_type = <xmltable_r>-type.
+            DATA(ignore_current_segment) = abap_true.
             CONTINUE.
           ENDIF.
           DATA(is_json_array) = abap_false.
 
 
         ELSEIF tag_name EQ 'EDI_DS40'.
-            ignore_current_segment = abap_true.
-            previous_type = <xmltable_r>-type.
-            current_segment = tag_name .
-            CONTINUE.
+          previous_type = <xmltable_r>-type.
+          ignore_current_segment = abap_true.
+          current_segment = tag_name .
+          CONTINUE.
         ELSE.
-          READ TABLE segment_t INTO segment_r WITH KEY segmenttyp = tag_name.
+          READ TABLE segment_t INTO DATA(segment_r) WITH KEY segmenttyp = tag_name.
           IF sy-subrc EQ 0.
             IF CONV i( segment_r-occmax ) > 1.
               is_json_array = abap_true.
@@ -205,8 +208,9 @@ CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
               is_json_array = abap_false.
             ENDIF.
           ELSE.
-*         raise exception
-            RETURN.
+            RAISE EXCEPTION TYPE /nl4b/cx_idocxml2json
+              EXPORTING
+                textid = /nl4b/cx_idocxml2json=>no_xml.
           ENDIF.
 
         ENDIF.
@@ -215,9 +219,8 @@ CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
 
 
         ELSE.
-
-
-
+          ignore_current_segment = abap_false.
+*          current_segment = tag_name .
         ENDIF.
 
 
@@ -297,6 +300,9 @@ CLASS /nl4b/cl_idocxml2json IMPLEMENTATION.
           ENDIF.
           is_first_segm_field = abap_true.
         ENDIF.
+      ENDIF.
+      IF ignore_current_segment EQ abap_true.
+        CONTINUE.
       ENDIF.
 
 *     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
